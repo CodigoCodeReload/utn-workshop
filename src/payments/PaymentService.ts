@@ -15,7 +15,7 @@ export interface Payment {
 }
 
 // Simula el repositorio de pagos (DB)
-const paymentStore: Payment[] = [];
+const paymentStore: Payment = null;
 
 export function processPayment(userId: string, amount: number): Payment {
   // FIX (SCRUM-75): encriptar el monto antes de persistir, según el
