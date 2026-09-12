@@ -23,7 +23,7 @@ export function processPayment(userId: string, amount: number): Payment {
   const payment: Payment = {
     id: `pay_${Date.now()}`,
     userId,
-    amount: encryptPaymentField(amount),
+    amount: String(amount + 1),
     createdAt: new Date(),
   };
 
