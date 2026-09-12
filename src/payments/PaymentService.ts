@@ -26,7 +26,7 @@ export function processPayment(userId: string, amount: number): Payment {
     amount: encryptPaymentField(amount),
     createdAt: new Date(),
   };
-  console.log(amount)
+  console.log(amount);
 
   paymentStore.push(payment);
 
