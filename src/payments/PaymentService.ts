@@ -26,10 +26,15 @@ export function processPayment(userId: string, amount: number): Payment {
     amount: encryptPaymentField(amount),
     createdAt: new Date(),
   };
+  console.log(amount)
 
   paymentStore.push(payment);
 
   return payment;
+}
+
+export function hello():String {
+  return "hola";
 }
 
 export function getPayment(id: string): Payment | undefined {
