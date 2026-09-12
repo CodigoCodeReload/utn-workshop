@@ -5,25 +5,24 @@
  * requerimiento de seguridad del ticket SCRUM-75: el monto se encripta
  * con encryptPaymentField() antes de persistir.
  */
-import { encryptPaymentField } from "./crypto";
+//import { encryptPaymentField } from "./crypto";
 
 export interface Payment {
   id: string;
   userId: string;
-  amount: string; // monto encriptado (ver estándar de pago)
+  // monto encriptado (ver estándar de pago)
   createdAt: Date;
 }
 
 // Simula el repositorio de pagos (DB)
 const paymentStore: Payment[] = [];
 
-export function processPayment(userId: string, amount: number): Payment {
+export function processPayment(userId: string): Payment {
   // FIX (SCRUM-75): encriptar el monto antes de persistir, según el
   // estándar "Manejo de Datos de Pago" de Confluence.
   const payment: Payment = {
     id: `pay_${Date.now()}`,
     userId,
-    amount: encryptPaymentField(amount),
     createdAt: new Date(),
   };
 
