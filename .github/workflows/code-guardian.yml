@@ -1,0 +1,172 @@
+name: Code Guardian Validation
+'on':
+  pull_request:
+    branches:
+    - main
+jobs:
+  validacion-funcional:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validación Funcional
+      run: |-
+        body_file=$(mktemp)
+        PAYLOAD=$(jq -n \
+          --arg group "funcional" \
+          --arg branch "${{ github.head_ref }}" \
+          --arg base_branch "${{ github.base_ref }}" \
+          --arg pr_number "${{ github.event.pull_request.number }}" \
+          --arg commit_sha "${{ github.event.pull_request.head.sha }}" \
+          --arg jira_ticket_key "$(echo '${{ github.event.pull_request.title }} ${{ github.head_ref }}' | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)" \
+          --arg owner "${{ github.repository_owner }}" \
+          --arg repo "${{ github.event.repository.name }}" \
+          '{mode: "async", group: $group, branch: $branch, base_branch: $base_branch, pr_number: $pr_number, commit_sha: $commit_sha, jira_ticket_key: $jira_ticket_key, git: {provider: "github", auth_type: "pat", owner: $owner, repo: $repo, branch: $branch, base_branch: $base_branch}}')
+        http_code=$(curl -sS -X POST \
+          -o "$body_file" \
+          -w '%{http_code}' \
+          -H "Content-Type: application/json" \
+          -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}" \
+          -d "$PAYLOAD" \
+          ${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci)
+        body=$(cat "$body_file")
+        echo "HTTP $http_code"
+        if [ "$http_code" != "200" ]; then echo "Virgilio API no disponible"; exit 1; fi
+        run_id=$(echo "$body" | sed -E 's/.*"run_id":"([^"]+)".*/\1/')
+        if [ -z "$run_id" ] || [ "$run_id" = "$body" ]; then echo "No run_id en respuesta"; cat "$body_file"; exit 1; fi
+        echo "run_id: $run_id"
+        for i in $(seq 1 60); do
+          sleep 10
+          st_body=$(curl -sS -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}"     "${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci/status?run_id=$run_id")
+          st=$(echo "$st_body" | sed -E 's/.*"status":"([a-z_]+)".*/\1/')
+          echo "poll $i: status=$st"
+          if [ "$st" = "completed" ] || [ "$st" = "failed" ]; then break; fi
+        done
+        if [ "$st" != "completed" ]; then echo "Validacion no completo a tiempo (status=$st)"; exit 1; fi
+        overall=$(echo "$st_body" | sed -E 's/.*"overall_status":"([a-z]+)".*/\1/')
+        echo "overall_status: $overall"
+        if [ "$overall" != "passed" ] && [ "$overall" != "warning" ]; then echo "Validacion $overall"; exit 1; fi
+  validacion-tecnica:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validación Tecnica
+      run: |-
+        body_file=$(mktemp)
+        PAYLOAD=$(jq -n \
+          --arg group "tecnica" \
+          --arg branch "${{ github.head_ref }}" \
+          --arg base_branch "${{ github.base_ref }}" \
+          --arg pr_number "${{ github.event.pull_request.number }}" \
+          --arg commit_sha "${{ github.event.pull_request.head.sha }}" \
+          --arg jira_ticket_key "$(echo '${{ github.event.pull_request.title }} ${{ github.head_ref }}' | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)" \
+          --arg owner "${{ github.repository_owner }}" \
+          --arg repo "${{ github.event.repository.name }}" \
+          '{mode: "async", group: $group, branch: $branch, base_branch: $base_branch, pr_number: $pr_number, commit_sha: $commit_sha, jira_ticket_key: $jira_ticket_key, git: {provider: "github", auth_type: "pat", owner: $owner, repo: $repo, branch: $branch, base_branch: $base_branch}}')
+        http_code=$(curl -sS -X POST \
+          -o "$body_file" \
+          -w '%{http_code}' \
+          -H "Content-Type: application/json" \
+          -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}" \
+          -d "$PAYLOAD" \
+          ${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci)
+        body=$(cat "$body_file")
+        echo "HTTP $http_code"
+        if [ "$http_code" != "200" ]; then echo "Virgilio API no disponible"; exit 1; fi
+        run_id=$(echo "$body" | sed -E 's/.*"run_id":"([^"]+)".*/\1/')
+        if [ -z "$run_id" ] || [ "$run_id" = "$body" ]; then echo "No run_id en respuesta"; cat "$body_file"; exit 1; fi
+        echo "run_id: $run_id"
+        for i in $(seq 1 60); do
+          sleep 10
+          st_body=$(curl -sS -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}"     "${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci/status?run_id=$run_id")
+          st=$(echo "$st_body" | sed -E 's/.*"status":"([a-z_]+)".*/\1/')
+          echo "poll $i: status=$st"
+          if [ "$st" = "completed" ] || [ "$st" = "failed" ]; then break; fi
+        done
+        if [ "$st" != "completed" ]; then echo "Validacion no completo a tiempo (status=$st)"; exit 1; fi
+        overall=$(echo "$st_body" | sed -E 's/.*"overall_status":"([a-z]+)".*/\1/')
+        echo "overall_status: $overall"
+        if [ "$overall" != "passed" ] && [ "$overall" != "warning" ]; then echo "Validacion $overall"; exit 1; fi
+    needs:
+    - validacion-funcional
+  validacion-vulnerabilidades:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validación Vulnerabilidades
+      run: |-
+        body_file=$(mktemp)
+        PAYLOAD=$(jq -n \
+          --arg group "vulnerabilidades" \
+          --arg branch "${{ github.head_ref }}" \
+          --arg base_branch "${{ github.base_ref }}" \
+          --arg pr_number "${{ github.event.pull_request.number }}" \
+          --arg commit_sha "${{ github.event.pull_request.head.sha }}" \
+          --arg jira_ticket_key "$(echo '${{ github.event.pull_request.title }} ${{ github.head_ref }}' | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)" \
+          --arg owner "${{ github.repository_owner }}" \
+          --arg repo "${{ github.event.repository.name }}" \
+          '{mode: "async", group: $group, branch: $branch, base_branch: $base_branch, pr_number: $pr_number, commit_sha: $commit_sha, jira_ticket_key: $jira_ticket_key, git: {provider: "github", auth_type: "pat", owner: $owner, repo: $repo, branch: $branch, base_branch: $base_branch}}')
+        http_code=$(curl -sS -X POST \
+          -o "$body_file" \
+          -w '%{http_code}' \
+          -H "Content-Type: application/json" \
+          -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}" \
+          -d "$PAYLOAD" \
+          ${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci)
+        body=$(cat "$body_file")
+        echo "HTTP $http_code"
+        if [ "$http_code" != "200" ]; then echo "Virgilio API no disponible"; exit 1; fi
+        run_id=$(echo "$body" | sed -E 's/.*"run_id":"([^"]+)".*/\1/')
+        if [ -z "$run_id" ] || [ "$run_id" = "$body" ]; then echo "No run_id en respuesta"; cat "$body_file"; exit 1; fi
+        echo "run_id: $run_id"
+        for i in $(seq 1 60); do
+          sleep 10
+          st_body=$(curl -sS -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}"     "${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci/status?run_id=$run_id")
+          st=$(echo "$st_body" | sed -E 's/.*"status":"([a-z_]+)".*/\1/')
+          echo "poll $i: status=$st"
+          if [ "$st" = "completed" ] || [ "$st" = "failed" ]; then break; fi
+        done
+        if [ "$st" != "completed" ]; then echo "Validacion no completo a tiempo (status=$st)"; exit 1; fi
+        overall=$(echo "$st_body" | sed -E 's/.*"overall_status":"([a-z]+)".*/\1/')
+        echo "overall_status: $overall"
+        if [ "$overall" != "passed" ] && [ "$overall" != "warning" ]; then echo "Validacion $overall"; exit 1; fi
+    needs:
+    - validacion-funcional
+  validacion-estilo:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Validación Estilo
+      run: |-
+        body_file=$(mktemp)
+        PAYLOAD=$(jq -n \
+          --arg group "estilo" \
+          --arg branch "${{ github.head_ref }}" \
+          --arg base_branch "${{ github.base_ref }}" \
+          --arg pr_number "${{ github.event.pull_request.number }}" \
+          --arg commit_sha "${{ github.event.pull_request.head.sha }}" \
+          --arg jira_ticket_key "$(echo '${{ github.event.pull_request.title }} ${{ github.head_ref }}' | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)" \
+          --arg owner "${{ github.repository_owner }}" \
+          --arg repo "${{ github.event.repository.name }}" \
+          '{mode: "async", group: $group, branch: $branch, base_branch: $base_branch, pr_number: $pr_number, commit_sha: $commit_sha, jira_ticket_key: $jira_ticket_key, git: {provider: "github", auth_type: "pat", owner: $owner, repo: $repo, branch: $branch, base_branch: $base_branch}}')
+        http_code=$(curl -sS -X POST \
+          -o "$body_file" \
+          -w '%{http_code}' \
+          -H "Content-Type: application/json" \
+          -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}" \
+          -d "$PAYLOAD" \
+          ${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci)
+        body=$(cat "$body_file")
+        echo "HTTP $http_code"
+        if [ "$http_code" != "200" ]; then echo "Virgilio API no disponible"; exit 1; fi
+        run_id=$(echo "$body" | sed -E 's/.*"run_id":"([^"]+)".*/\1/')
+        if [ -z "$run_id" ] || [ "$run_id" = "$body" ]; then echo "No run_id en respuesta"; cat "$body_file"; exit 1; fi
+        echo "run_id: $run_id"
+        for i in $(seq 1 60); do
+          sleep 10
+          st_body=$(curl -sS -H "X-Code-Guardian-Api-Key: ${{ secrets.CODE_GUARDIAN_API_KEY }}"     "${{ secrets.VIRGILIO_API_URL }}/code-guardian/validate/ci/status?run_id=$run_id")
+          st=$(echo "$st_body" | sed -E 's/.*"status":"([a-z_]+)".*/\1/')
+          echo "poll $i: status=$st"
+          if [ "$st" = "completed" ] || [ "$st" = "failed" ]; then break; fi
+        done
+        if [ "$st" != "completed" ]; then echo "Validacion no completo a tiempo (status=$st)"; exit 1; fi
+        overall=$(echo "$st_body" | sed -E 's/.*"overall_status":"([a-z]+)".*/\1/')
+        echo "overall_status: $overall"
+        if [ "$overall" != "passed" ] && [ "$overall" != "warning" ]; then echo "Validacion $overall"; exit 1; fi
+    needs:
+    - validacion-funcional
